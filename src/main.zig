@@ -164,7 +164,6 @@ pub fn main() !void {
     std.debug.print("listen port {d}\n", .{listen_port});
 
     const socket = try std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, std.posix.IPPROTO.UDP);
-    defer std.posix.close(socket);
 
     const listen_addr = try std.net.Address.parseIp("0.0.0.0", listen_port);
     try std.posix.bind(socket, &listen_addr.any, listen_addr.getOsSockLen());
@@ -174,6 +173,8 @@ pub fn main() !void {
     const size = rand.intRangeLessThan(usize, 32, buf.len);
     rand.bytes(buf[0..size]);
     _ = try std.posix.sendto(socket, buf[0..size], 0, &server_addr.any, server_addr.getOsSockLen());
+
+    std.posix.close(socket);
 
     var cmd = std.process.Child.init(&[_][]const u8{ "sudo", wg, "up", args[1] }, alloc);
     try cmd.spawn();
