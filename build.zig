@@ -12,6 +12,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.linkLibC();
+    exe.defineCMacro("INI_MAX_LINE", "1000");
     exe.addIncludePath(b.path("deps/inih"));
     exe.addCSourceFile(.{
         .file = b.path("deps/inih/ini.c"),

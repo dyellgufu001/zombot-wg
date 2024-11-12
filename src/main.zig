@@ -4,7 +4,14 @@ const c = @cImport({
 });
 const Allocator = std.mem.Allocator;
 
-fn isPortAvailable(s: std.posix.socket_t, port: u16) bool {
+fn isPortAvailable(port: u16) bool {
+    const s = std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, std.posix.IPPROTO.UDP) catch {
+        std.debug.print("uh oh\n", .{});
+        unreachable;
+    };
+
+    defer std.posix.close(s);
+
     const addr = std.net.Address.parseIp("0.0.0.0", port) catch unreachable;
     std.posix.bind(s, &addr.any, addr.getOsSockLen()) catch return false;
     return true;
@@ -21,6 +28,14 @@ const Config = struct {
     const Section = struct {
         name: []const u8,
         pairs: std.ArrayList(Pair),
+
+        fn findPairByName(self: Section, name: []const u8) ?*Pair {
+            for (self.pairs.items) |*pair| {
+                if (std.mem.eql(u8, pair.*.name, name)) return pair;
+            }
+
+            return null;
+        }
     };
 
     alloc: Allocator,
@@ -94,16 +109,18 @@ const Config = struct {
     }
 
     fn updateListenPort(self: *Self, path: []u8) !u16 {
-        const s = try std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, std.posix.IPPROTO.UDP);
-        defer std.posix.close(s);
-
         var listen_port = std.crypto.random.intRangeAtMost(u16, 32768, 65535);
-        while (!isPortAvailable(s, listen_port)) : (listen_port = std.crypto.random.intRangeAtMost(u16, 32768, 65535)) {}
+        while (!isPortAvailable(listen_port)) : (listen_port = std.crypto.random.intRangeAtMost(u16, 32768, 65535)) {}
 
-        try self.findSectionByName("Interface").?.pairs.append(.{
-            .name = try self.alloc.dupe(u8, "ListenPort"),
-            .value = try std.fmt.allocPrint(self.alloc, "{d}", .{listen_port}),
-        });
+        if (self.findSectionByName("Interface").?.findPairByName("ListenPort")) |pair| {
+            self.alloc.free(pair.value);
+            pair.*.value = try std.fmt.allocPrint(self.alloc, "{d}", .{listen_port});
+        } else {
+            try self.findSectionByName("Interface").?.pairs.append(.{
+                .name = try self.alloc.dupe(u8, "ListenPort"),
+                .value = try std.fmt.allocPrint(self.alloc, "{d}", .{listen_port}),
+            });
+        }
 
         try self.write(path);
 
@@ -149,7 +166,7 @@ pub fn main() !void {
     const socket = try std.posix.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, std.posix.IPPROTO.UDP);
     defer std.posix.close(socket);
 
-    const listen_addr = try std.net.Address.parseIp("0.0.0.0", 56123);
+    const listen_addr = try std.net.Address.parseIp("0.0.0.0", listen_port);
     try std.posix.bind(socket, &listen_addr.any, listen_addr.getOsSockLen());
 
     const rand = std.crypto.random;
